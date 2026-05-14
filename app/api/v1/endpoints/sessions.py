@@ -10,7 +10,6 @@ from app.models.models import Appointment, AppointmentStatus, User, UserRole, Vi
 from app.schemas.schemas import VideoSessionOut
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
-ф
 _peer_connections: dict[str, RTCPeerConnection] = {}
 _room_clients: dict[str, list[WebSocket]] = {}
 
