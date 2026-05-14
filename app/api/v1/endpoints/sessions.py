@@ -10,6 +10,7 @@ from app.models.models import Appointment, AppointmentStatus, User, UserRole, Vi
 from app.schemas.schemas import VideoSessionOut
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
 _peer_connections: dict[str, RTCPeerConnection] = {}
 _room_clients: dict[str, list[WebSocket]] = {}
 
@@ -52,7 +53,6 @@ def start_session(
             started_at=datetime.now(timezone.utc),
         )
         db.add(session)
-    appointment.status = AppointmentStatus.completed
     db.commit()
     db.refresh(session)
     return session
@@ -74,6 +74,7 @@ def end_session(
     session = appointment.session
     session.is_active = False
     session.ended_at = datetime.now(timezone.utc)
+    appointment.status = AppointmentStatus.completed
     db.commit()
     db.refresh(session)
     return session
