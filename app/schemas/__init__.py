@@ -1,0 +1,15 @@
+from app.schemas.schemas import (  # noqa: F401
+    AppointmentCreate,
+    AppointmentOut,
+    AppointmentStatusUpdate,
+    PsychologistOut,
+    PsychologistProfileUpdate,
+    SlotCreate,
+    SlotOut,
+    Token,
+    UserLogin,
+    UserOut,
+    UserRegister,
+    UserUpdate,
+    VideoSessionOut,
+)
