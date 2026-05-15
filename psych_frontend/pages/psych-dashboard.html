@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Кабинет психолога — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    .greeting { font-size: clamp(28px, 4vw, 46px); margin-bottom: 6px; }
+    .greeting-sub { color: var(--text-muted); font-size: 14px; margin-bottom: 40px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 40px; }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; }
+    .stat-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px; }
+    .stat-value { font-family: var(--font-serif); font-size: 36px; font-weight: 300; }
+    .quick-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 40px; }
+    .recent-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 16px 20px; transition: border-color var(--transition);
+    }
+    .recent-item:hover { border-color: var(--border-hl); }
+    .recent-info { flex: 1; }
+    .recent-name { font-family: var(--font-serif); font-size: 18px; }
+    .recent-time { font-size: 12px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+
+  <div class="page-wrap">
+    <h1 class="greeting">Здравствуйте, <span id="psych-name">…</span></h1>
+    <p class="greeting-sub">Панель управления психолога</p>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Всего слотов</div>
+        <div class="stat-value" id="slots-count">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Свободных слотов</div>
+        <div class="stat-value" id="free-count">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ожидают подтверждения</div>
+        <div class="stat-value" id="pending-count">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Завершённые сессии</div>
+        <div class="stat-value" id="done-count">—</div>
+      </div>
+    </div>
+
+    <div class="quick-actions">
+      <a href="schedule.html" class="btn btn-primary">🗓 Управление расписанием</a>
+      <a href="appointments-psych.html" class="btn">📋 Все записи</a>
+      <a href="profile.html" class="btn">✏️ Редактировать профиль</a>
+    </div>
+
+    <div class="section-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:22px">Новые записи</h2>
+      <a href="appointments-psych.html" style="font-size:13px;color:var(--text-muted)">Все →</a>
+    </div>
+    <div id="recent-list" class="gap-12">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <script>
+    requirePsychologist();
+
+    const user = Auth.getUser();
+    document.getElementById('psych-name').textContent = user.full_name.split(' ')[0];
+
+    async function load() {
+      const [slots, appointments] = await Promise.all([
+        api.getMySlots().catch(() => []),
+        api.getAppointments().catch(() => []),
+      ]);
+
+      document.getElementById('slots-count').textContent   = slots.length;
+      document.getElementById('free-count').textContent    = slots.filter(s => s.is_available).length;
+      document.getElementById('pending-count').textContent = appointments.filter(a => a.status === 'pending').length;
+      document.getElementById('done-count').textContent    = appointments.filter(a => a.status === 'completed').length;
+
+      const recent = appointments
+        .filter(a => a.status === 'pending')
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+
+      const list = document.getElementById('recent-list');
+      if (recent.length === 0) {
+        list.innerHTML = `<div class="empty-state"><div class="icon">✅</div><p>Нет новых записей</p></div>`;
+        return;
+      }
+
+      list.innerHTML = recent.map(a => `
+        <div class="recent-item">
+          <div class="recent-info">
+            <div class="recent-name">Запись #${a.id}</div>
+            <div class="recent-time">${formatDate(a.slot.starts_at)}</div>
+          </div>
+          <div class="row" style="gap:8px">
+            ${badgeHtml(a.status)}
+            <a href="appointments-psych.html" class="btn btn-sm">Управлять</a>
+          </div>
+        </div>`).join('');
+    }
+
+    load();
+  </script>
+</body>
+</html>

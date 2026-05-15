@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Записи пациентов — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    .appt-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 20px 24px; transition: border-color var(--transition);
+    }
+    .appt-card:hover { border-color: var(--border-hl); }
+    .appt-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+    .appt-title { font-family: var(--font-serif); font-size: 20px; }
+    .appt-time { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .appt-note { font-size: 13px; color: var(--text-muted); font-style: italic; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .appt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    .filter-chip {
+      padding: 5px 14px; border: 1px solid var(--border); border-radius: 20px;
+      background: transparent; color: var(--text-muted); font-family: var(--font-mono);
+      font-size: 12px; cursor: pointer; transition: all var(--transition);
+    }
+    .filter-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(168,197,160,.08); }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+
+  <div class="page-wrap">
+    <h1 class="page-title">Записи пациентов</h1>
+    <p class="page-subtitle">Управляйте входящими записями на консультации</p>
+
+    <div class="filter-bar">
+      <button class="filter-chip active" data-filter="all">Все</button>
+      <button class="filter-chip" data-filter="pending">Ожидают</button>
+      <button class="filter-chip" data-filter="confirmed">Подтверждены</button>
+      <button class="filter-chip" data-filter="completed">Завершены</button>
+      <button class="filter-chip" data-filter="cancelled">Отменены</button>
+    </div>
+
+    <div id="list" class="gap-12">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <script>
+    requirePsychologist();
+
+    let appointments = [];
+    let filter = 'all';
+
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        filter = chip.dataset.filter;
+        render();
+      });
+    });
+
+    async function load() {
+      appointments = await api.getAppointments().catch(() => []);
+      appointments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      render();
+    }
+
+    function render() {
+      const list = document.getElementById('list');
+      const items = filter === 'all' ? appointments : appointments.filter(a => a.status === filter);
+
+      if (items.length === 0) {
+        list.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Записей нет</p></div>`;
+        return;
+      }
+
+      list.innerHTML = items.map(a => {
+        const actions = [];
+
+        if (a.status === 'pending') {
+          actions.push(
+            `<button class="btn btn-sm btn-primary" onclick="setStatus(${a.id}, 'confirmed')">✓ Подтвердить</button>`,
+            `<button class="btn btn-sm btn-danger" onclick="setStatus(${a.id}, 'cancelled')">✕ Отклонить</button>`
+          );
+        }
+
+        if (a.status === 'confirmed') {
+          const hasSession = a.session && a.session.is_active;
+          if (!hasSession) {
+            actions.push(`<button class="btn btn-sm btn-primary" onclick="startSession(${a.id})">▶ Начать сессию</button>`);
+          } else {
+            actions.push(
+              `<a href="room.html?appointment=${a.id}" class="btn btn-sm btn-primary">📹 Войти в сессию</a>`,
+              `<button class="btn btn-sm btn-danger" onclick="endSession(${a.id})">■ Завершить</button>`
+            );
+          }
+        }
+
+        return `
+          <div class="appt-card" id="appt-${a.id}">
+            <div class="appt-head">
+              <div>
+                <div class="appt-title">Запись #${a.id} — Пациент #${a.patient_id}</div>
+                <div class="appt-time">${formatDate(a.slot.starts_at)} — ${formatDateShort(a.slot.ends_at)}</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                ${badgeHtml(a.status)}
+              </div>
+            </div>
+            ${a.notes ? `<div class="appt-note">"${a.notes}"</div>` : ''}
+            ${actions.length ? `<div class="appt-actions" style="margin-top:12px">${actions.join('')}</div>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    async function setStatus(id, status) {
+      try {
+        const updated = await api.updateStatus(id, { status });
+        const idx = appointments.findIndex(a => a.id === id);
+        if (idx !== -1) appointments[idx] = updated;
+        render();
+        Toast.success(`Статус обновлён: ${STATUS_LABEL[status]}`);
+      } catch(e) {
+        Toast.error(e.message);
+      }
+    }
+
+    async function startSession(id) {
+      try {
+        const session = await api.startSession(id);
+        const idx = appointments.findIndex(a => a.id === id);
+        if (idx !== -1) appointments[idx].session = session;
+        render();
+        Toast.success('Сессия запущена');
+      } catch(e) {
+        Toast.error(e.message);
+      }
+    }
+
+    async function endSession(id) {
+      if (!confirm('Завершить видеосессию?')) return;
+      try {
+        await api.endSession(id);
+        const idx = appointments.findIndex(a => a.id === id);
+        if (idx !== -1) appointments[idx].session = null;
+        render();
+        Toast.success('Сессия завершена');
+      } catch(e) {
+        Toast.error(e.message);
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

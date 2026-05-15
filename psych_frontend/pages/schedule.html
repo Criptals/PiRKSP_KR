@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Расписание — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    .schedule-layout { display: grid; grid-template-columns: 340px 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 760px) { .schedule-layout { grid-template-columns: 1fr; } }
+
+    .slot-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 14px 18px; transition: border-color var(--transition);
+    }
+    .slot-item:hover { border-color: var(--border-hl); }
+    .slot-item.occupied { opacity: .55; }
+    .slot-time { font-family: var(--font-serif); font-size: 18px; }
+    .slot-range { font-size: 12px; color: var(--text-muted); }
+    .slot-status { font-size: 11px; letter-spacing: .06em; }
+    .slot-status.free { color: var(--success); }
+    .slot-status.busy { color: var(--warning); }
+
+    .add-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; }
+    .add-card h2 { font-size: 22px; margin-bottom: 20px; }
+    .add-form { display: flex; flex-direction: column; gap: 16px; }
+    .row-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+
+  <div class="page-wrap">
+    <h1 class="page-title">Расписание</h1>
+    <p class="page-subtitle">Управляйте своими рабочими слотами</p>
+
+    <div class="schedule-layout">
+      <!-- список слотов -->
+      <div>
+        <p class="section-label">Ваши слоты</p>
+        <div id="slots-list" class="gap-12">
+          <div class="loading-overlay"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- форма добавления -->
+      <div class="add-card">
+        <h2>Добавить слот</h2>
+        <div class="add-form">
+          <div class="row-fields">
+            <div class="field">
+              <label for="starts">Начало</label>
+              <input type="datetime-local" id="starts">
+            </div>
+            <div class="field">
+              <label for="ends">Конец</label>
+              <input type="datetime-local" id="ends">
+            </div>
+          </div>
+          <div id="form-err" style="color:var(--danger);font-size:13px;display:none"></div>
+          <button class="btn btn-primary" id="add-btn">Добавить слот</button>
+        </div>
+        <hr class="divider">
+        <p style="font-size:12px;color:var(--text-dim);line-height:1.7">
+          Слоты — это временные окна, в которые пользователи могут записываться на консультацию.<br>
+          Занятый слот нельзя удалить — сначала отмените запись.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    requirePsychologist();
+
+    let slots = [];
+
+    async function loadSlots() {
+      slots = await api.getMySlots().catch(() => []);
+      slots.sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+      renderSlots();
+    }
+
+    function renderSlots() {
+      const list = document.getElementById('slots-list');
+      if (slots.length === 0) {
+        list.innerHTML = `<div class="empty-state"><div class="icon">🗓</div><p>Слотов пока нет</p></div>`;
+        return;
+      }
+      list.innerHTML = slots.map(s => `
+        <div class="slot-item ${!s.is_available ? 'occupied' : ''}">
+          <div>
+            <div class="slot-time">${formatDateShort(s.starts_at)}</div>
+            <div class="slot-range">— ${formatDateShort(s.ends_at)}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="slot-status ${s.is_available ? 'free' : 'busy'}">
+              ${s.is_available ? 'свободен' : 'занят'}
+            </div>
+            ${s.is_available
+              ? `<button class="btn btn-sm btn-danger" style="margin-top:6px" onclick="deleteSlot(${s.id})">Удалить</button>`
+              : ''}
+          </div>
+        </div>`).join('');
+    }
+
+    async function deleteSlot(id) {
+      if (!confirm('Удалить слот?')) return;
+      try {
+        await api.deleteSlot(id);
+        slots = slots.filter(s => s.id !== id);
+        renderSlots();
+        Toast.success('Слот удалён');
+      } catch(e) {
+        Toast.error(e.message);
+      }
+    }
+
+    // добавить слот
+    document.getElementById('add-btn').addEventListener('click', async () => {
+      const formErr = document.getElementById('form-err');
+      formErr.style.display = 'none';
+
+      const startsVal = document.getElementById('starts').value;
+      const endsVal   = document.getElementById('ends').value;
+
+      if (!startsVal || !endsVal) { formErr.textContent = 'Укажите начало и конец'; formErr.style.display = 'block'; return; }
+
+      const starts_at = new Date(startsVal).toISOString();
+      const ends_at   = new Date(endsVal).toISOString();
+
+      if (new Date(ends_at) <= new Date(starts_at)) {
+        formErr.textContent = 'Конец должен быть позже начала'; formErr.style.display = 'block'; return;
+      }
+
+      const btn = document.getElementById('add-btn');
+      btn.disabled = true; btn.textContent = 'Добавляем…';
+
+      try {
+        const slot = await api.createSlot({ starts_at, ends_at });
+        slots.push(slot);
+        slots.sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at));
+        renderSlots();
+        document.getElementById('starts').value = '';
+        document.getElementById('ends').value   = '';
+        Toast.success('Слот добавлен');
+      } catch(e) {
+        formErr.textContent = e.message; formErr.style.display = 'block';
+      } finally {
+        btn.disabled = false; btn.textContent = 'Добавить слот';
+      }
+    });
+
+    loadSlots();
+  </script>
+</body>
+</html>

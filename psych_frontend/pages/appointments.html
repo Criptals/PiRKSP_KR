@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мои записи — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    .appt-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 20px 24px; display: flex; align-items: center; justify-content: space-between;
+      gap: 20px; transition: border-color var(--transition);
+    }
+    .appt-card:hover { border-color: var(--border-hl); }
+    .appt-info { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .appt-title { font-family: var(--font-serif); font-size: 20px; }
+    .appt-meta { font-size: 12px; color: var(--text-muted); }
+    .appt-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    .filter-chip {
+      padding: 5px 14px; border: 1px solid var(--border); border-radius: 20px;
+      background: transparent; color: var(--text-muted); font-family: var(--font-mono);
+      font-size: 12px; cursor: pointer; transition: all var(--transition);
+    }
+    .filter-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(168,197,160,.08); }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+
+  <div class="page-wrap">
+    <div class="row-between" style="margin-bottom:8px">
+      <h1 class="page-title" style="margin-bottom:0">Мои записи</h1>
+      <a href="psychologists.html" class="btn btn-sm btn-primary">+ Записаться</a>
+    </div>
+    <p class="page-subtitle">Управляйте своими консультациями</p>
+
+    <div class="filter-bar">
+      <button class="filter-chip active" data-filter="all">Все</button>
+      <button class="filter-chip" data-filter="pending">Ожидают</button>
+      <button class="filter-chip" data-filter="confirmed">Подтверждены</button>
+      <button class="filter-chip" data-filter="completed">Завершены</button>
+      <button class="filter-chip" data-filter="cancelled">Отменены</button>
+    </div>
+
+    <div id="list" class="gap-12">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <script>
+    requireUser();
+
+    let allAppointments = [];
+    let currentFilter   = 'all';
+
+    // фильтр
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        currentFilter = chip.dataset.filter;
+        render();
+      });
+    });
+
+    async function load() {
+      allAppointments = await api.getAppointments().catch(() => []);
+      allAppointments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      render();
+    }
+
+    function render() {
+      const list = document.getElementById('list');
+      const items = currentFilter === 'all'
+        ? allAppointments
+        : allAppointments.filter(a => a.status === currentFilter);
+
+      if (items.length === 0) {
+        list.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>Записей нет</p></div>`;
+        return;
+      }
+
+      list.innerHTML = items.map(a => {
+        const session      = a.session;
+        const canJoin      = session && session.is_active;
+        const canCancel    = ['pending', 'confirmed'].includes(a.status);
+
+        return `
+          <div class="appt-card" id="appt-${a.id}">
+            <div class="appt-info">
+              <span class="appt-title">Запись #${a.id}</span>
+              <span class="appt-meta">
+                ${formatDate(a.slot.starts_at)} &nbsp;·&nbsp;
+                до ${formatDateShort(a.slot.ends_at)}
+              </span>
+              ${a.notes ? `<span class="appt-meta" style="margin-top:4px;font-style:italic">"${a.notes}"</span>` : ''}
+            </div>
+            <div class="appt-actions">
+              ${badgeHtml(a.status)}
+              ${canJoin
+                ? `<a href="room.html?appointment=${a.id}" class="btn btn-sm btn-primary">📹 Войти</a>`
+                : ''}
+              ${canCancel
+                ? `<button class="btn btn-sm btn-danger" onclick="cancelAppt(${a.id})">Отменить</button>`
+                : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    async function cancelAppt(id) {
+      if (!confirm('Отменить запись?')) return;
+      try {
+        await api.cancelAppointment(id);
+        const a = allAppointments.find(x => x.id === id);
+        if (a) a.status = 'cancelled';
+        Toast.success('Запись отменена');
+        render();
+      } catch(e) {
+        Toast.error(e.message);
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

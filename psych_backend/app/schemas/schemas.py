@@ -6,7 +6,7 @@ from app.models.models import AppointmentStatus, UserRole
 class UserRegister(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=2, max_length=255)
-    password: str = Field(min_length=6, max_length=255)
+    password: str = Field(min_length=6)
     role: UserRole = UserRole.user
 
     @field_validator("full_name")
@@ -83,6 +83,17 @@ class SlotOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class VideoSessionOut(BaseModel):
+    id: int
+    appointment_id: int
+    room_id: str
+    is_active: bool
+    started_at: datetime | None
+    ended_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
 class AppointmentCreate(BaseModel):
     slot_id: int
     notes: str | None = Field(default=None, max_length=1000)
@@ -101,16 +112,6 @@ class AppointmentOut(BaseModel):
     notes: str | None
     created_at: datetime
     slot: SlotOut
-
-    model_config = {"from_attributes": True}
-
-
-class VideoSessionOut(BaseModel):
-    id: int
-    appointment_id: int
-    room_id: str
-    is_active: bool
-    started_at: datetime | None
-    ended_at: datetime | None
+    session: VideoSessionOut | None = None
 
     model_config = {"from_attributes": True}

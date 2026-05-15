@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .auth-wrap { width:100%; max-width:400px; padding:24px; animation:fadeUp .5s ease forwards; }
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(16px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .auth-logo { font-family:var(--font-serif); font-size:28px; font-style:italic; text-align:center; margin-bottom:36px; }
+    .auth-logo span { color:var(--accent); }
+    .auth-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:36px; }
+    .auth-title { font-size:28px; margin-bottom:4px; }
+    .auth-sub { color:var(--text-muted); font-size:13px; margin-bottom:28px; }
+    .auth-form { display:flex; flex-direction:column; gap:18px; }
+    .auth-footer { text-align:center; margin-top:20px; font-size:13px; color:var(--text-muted); }
+    .auth-footer a { color:var(--accent); }
+    .btn-full { width:100%; justify-content:center; }
+    .error-msg {
+      background:rgba(201,123,123,.08); border:1px solid var(--danger);
+      color:var(--danger); border-radius:var(--radius); padding:10px 14px;
+      font-size:13px; display:none;
+    }
+    .error-msg.show { display:block; }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <div class="auth-wrap">
+    <div class="auth-logo"><span>психо</span>лог онлайн</div>
+    <div class="auth-card">
+      <h1 class="auth-title">Добро пожаловать</h1>
+      <p class="auth-sub">Войдите, чтобы продолжить</p>
+      <div id="err" class="error-msg"></div>
+      <div class="auth-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="password">Пароль</label>
+          <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-full" id="login-btn">Войти</button>
+      </div>
+      <p class="auth-footer">Нет аккаунта? <a href="register.html">Зарегистрироваться</a></p>
+    </div>
+  </div>
+  <script>
+    if (Auth.isLoggedIn()) {
+      location.href = Auth.isPsychologist() ? 'psych-dashboard.html' : 'dashboard.html';
+    }
+
+    const btn   = document.getElementById('login-btn');
+    const err   = document.getElementById('err');
+
+    function showErr(m) { err.textContent = m; err.classList.add('show'); }
+
+    async function doLogin() {
+      err.classList.remove('show');
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      if (!email || !password) { showErr('Заполните все поля'); return; }
+
+      btn.disabled = true; btn.textContent = 'Входим…';
+      try {
+        const { access_token } = await api.login({ email, password });
+        Auth.setToken(access_token);
+        const user = await api.getMe();
+        Auth.setUser(user);
+        location.href = user.role === 'psychologist' ? 'psych-dashboard.html' : 'dashboard.html';
+      } catch(e) {
+        showErr(e.message);
+        btn.disabled = false; btn.textContent = 'Войти';
+      }
+    }
+
+    btn.addEventListener('click', doLogin);
+    document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  </script>
+</body>
+</html>

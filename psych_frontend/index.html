@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Психолог Онлайн</title>
+  <link rel="stylesheet" href="css/base.css">
+  <style>
+    .hero {
+      min-height: calc(100vh - 60px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 60px 24px;
+      position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px; opacity: .3; pointer-events: none;
+    }
+    .hero::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 50%, transparent 30%, var(--bg) 100%);
+      pointer-events: none;
+    }
+    .hero-content { position: relative; z-index: 1; }
+    .hero-eyebrow {
+      font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 24px;
+      opacity: 0; animation: fadeUp .6s ease .1s forwards;
+    }
+    .hero-title {
+      font-size: clamp(52px, 9vw, 100px); font-weight: 300;
+      line-height: 1.05; letter-spacing: -.01em; margin-bottom: 28px;
+      opacity: 0; animation: fadeUp .7s ease .2s forwards;
+    }
+    .hero-title em { font-style: italic; color: var(--accent); }
+    .hero-desc {
+      max-width: 520px; color: var(--text-muted); font-size: 16px;
+      line-height: 1.8; margin: 0 auto 44px;
+      opacity: 0; animation: fadeUp .7s ease .35s forwards;
+    }
+    .hero-actions {
+      display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+      opacity: 0; animation: fadeUp .7s ease .5s forwards;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .features { max-width: 1100px; margin: 0 auto; padding: 80px 24px; }
+    .features-label {
+      text-align: center; font-size: 11px; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--text-dim); margin-bottom: 48px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
+    }
+    .feature-card {
+      padding: 28px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+      transition: border-color var(--transition), transform var(--transition);
+    }
+    .feature-card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
+    .feature-icon { font-size: 28px; margin-bottom: 16px; }
+    .feature-title { font-family: var(--font-serif); font-size: 22px; font-weight: 300; margin-bottom: 10px; }
+    .feature-text { color: var(--text-muted); line-height: 1.7; font-size: 13px; }
+    .footer {
+      border-top: 1px solid var(--border); text-align: center;
+      padding: 28px 24px; color: var(--text-dim); font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <script src="js/api.js"></script>
+  <script src="js/navbar.js"></script>
+
+  <section class="hero">
+    <div class="hero-content">
+      <p class="hero-eyebrow">онлайн-консультации</p>
+      <h1 class="hero-title">Поговорите<br>с <em>психологом</em></h1>
+      <p class="hero-desc">
+        Безопасное пространство для разговора. Видеосессии, гибкое расписание
+        и профессиональные специалисты — не выходя из дома.
+      </p>
+      <div class="hero-actions">
+        <a href="pages/register.html" class="btn btn-primary btn-lg">Начать</a>
+        <a href="pages/psychologists.html" class="btn btn-lg">Найти психолога</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="features">
+    <p class="features-label">Что мы предлагаем</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🗓</div>
+        <h3 class="feature-title">Гибкое расписание</h3>
+        <p class="feature-text">Выбирайте удобное время из доступных слотов психолога. Без очередей и ожидания.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📹</div>
+        <h3 class="feature-title">Видеосессии</h3>
+        <p class="feature-text">Защищённые видеозвонки прямо в браузере — никаких дополнительных приложений.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3 class="feature-title">Конфиденциальность</h3>
+        <p class="feature-text">Ваши данные и разговоры защищены. Психолог видит только то, что вы разрешаете.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌿</div>
+        <h3 class="feature-title">Проверенные специалисты</h3>
+        <p class="feature-text">Каждый психолог проходит верификацию. Подберите специалиста по специализации.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">© 2024 Психолог Онлайн · Все права защищены</footer>
+
+  <script>
+    if (Auth.isLoggedIn()) {
+      window.location.href = Auth.isPsychologist()
+        ? 'pages/psych-dashboard.html'
+        : 'pages/dashboard.html';
+    }
+  </script>
+</body>
+</html>

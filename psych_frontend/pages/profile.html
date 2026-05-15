@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Профиль — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    .profile-layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: start; }
+    @media (max-width: 700px) { .profile-layout { grid-template-columns: 1fr; } }
+    .profile-sidebar { display: flex; flex-direction: column; gap: 16px; }
+    .avatar-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 28px; text-align: center;
+    }
+    .avatar-circle {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: var(--accent-dim); display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-serif); font-size: 36px; color: var(--bg);
+      margin: 0 auto 16px;
+    }
+    .avatar-name { font-family: var(--font-serif); font-size: 22px; margin-bottom: 4px; }
+    .avatar-role { font-size: 12px; color: var(--text-muted); letter-spacing: .06em; text-transform: uppercase; }
+    .avatar-email { font-size: 13px; color: var(--text-muted); margin-top: 8px; }
+
+    .form-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; }
+    .form-card h2 { font-size: 22px; margin-bottom: 20px; }
+    .profile-form { display: flex; flex-direction: column; gap: 16px; }
+    .danger-zone { background: rgba(201,123,123,.04); border: 1px solid rgba(201,123,123,.2); border-radius: var(--radius-lg); padding: 24px; }
+    .danger-zone h3 { color: var(--danger); font-size: 16px; margin-bottom: 8px; }
+    .danger-zone p { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+
+  <div class="page-wrap">
+    <h1 class="page-title">Профиль</h1>
+    <p class="page-subtitle">Управляйте своей учётной записью</p>
+
+    <div class="profile-layout">
+      <!-- левая колонка -->
+      <div class="profile-sidebar">
+        <div class="avatar-card">
+          <div class="avatar-circle" id="avatar-initial">…</div>
+          <div class="avatar-name" id="avatar-name">…</div>
+          <div class="avatar-role" id="avatar-role">…</div>
+          <div class="avatar-email" id="avatar-email">…</div>
+        </div>
+        <div class="danger-zone">
+          <h3>Опасная зона</h3>
+          <p>Деактивация аккаунта необратима. Все данные будут скрыты.</p>
+          <button class="btn btn-danger btn-sm" id="deactivate-btn">Деактивировать аккаунт</button>
+        </div>
+      </div>
+
+      <!-- правая колонка -->
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <!-- основные данные -->
+        <div class="form-card">
+          <h2>Личные данные</h2>
+          <div class="profile-form" id="base-form">
+            <div class="field">
+              <label for="full-name">Полное имя</label>
+              <input type="text" id="full-name">
+            </div>
+            <div class="field">
+              <label for="new-pass">Новый пароль</label>
+              <input type="password" id="new-pass" placeholder="Оставьте пустым, чтобы не менять">
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-primary" id="save-base-btn">Сохранить</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- профиль психолога -->
+        <div class="form-card" id="psych-section" style="display:none">
+          <h2>Профиль психолога</h2>
+          <div class="profile-form">
+            <div class="field">
+              <label for="specialization">Специализация</label>
+              <input type="text" id="specialization" placeholder="Например: КПТ, семейная терапия">
+            </div>
+            <div class="field">
+              <label for="bio">О себе</label>
+              <textarea id="bio" placeholder="Расскажите о вашем опыте и подходе"></textarea>
+            </div>
+            <div class="field">
+              <label for="price">Стоимость (₽/час)</label>
+              <input type="number" id="price" min="0" placeholder="3000">
+            </div>
+            <button class="btn btn-primary" id="save-psych-btn">Сохранить профиль</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    requireAuth();
+
+    const user = Auth.getUser();
+
+    // заполняем sidebar
+    document.getElementById('avatar-initial').textContent = user.full_name.charAt(0).toUpperCase();
+    document.getElementById('avatar-name').textContent    = user.full_name;
+    document.getElementById('avatar-role').textContent    = user.role === 'psychologist' ? 'Психолог' : 'Пользователь';
+    document.getElementById('avatar-email').textContent   = user.email;
+    document.getElementById('full-name').value            = user.full_name;
+
+    // показываем секцию психолога
+    if (user.role === 'psychologist') {
+      document.getElementById('psych-section').style.display = 'block';
+      api.getPsychologist(user.id).then(profile => {
+        if (!profile) return;
+        document.getElementById('specialization').value = profile.specialization || '';
+        document.getElementById('bio').value            = profile.bio || '';
+        document.getElementById('price').value          = profile.price_per_hour || '';
+      }).catch(() => {});
+    }
+
+    // сохранить базовые данные
+    document.getElementById('save-base-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('save-base-btn');
+      btn.disabled = true; btn.textContent = 'Сохраняем…';
+
+      const body = {};
+      const name = document.getElementById('full-name').value.trim();
+      const pass = document.getElementById('new-pass').value;
+      if (name) body.full_name = name;
+      if (pass) body.password  = pass;
+
+      try {
+        const updated = await api.updateMe(body);
+        Auth.setUser(updated);
+        document.getElementById('avatar-name').textContent    = updated.full_name;
+        document.getElementById('avatar-initial').textContent = updated.full_name.charAt(0).toUpperCase();
+        document.getElementById('new-pass').value = '';
+        Toast.success('Профиль обновлён');
+      } catch(e) {
+        Toast.error(e.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Сохранить';
+      }
+    });
+
+    // сохранить профиль психолога
+    document.getElementById('save-psych-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('save-psych-btn');
+      btn.disabled = true; btn.textContent = 'Сохраняем…';
+      try {
+        await api.updateMyProfile({
+          specialization: document.getElementById('specialization').value.trim() || null,
+          bio:            document.getElementById('bio').value.trim() || null,
+          price_per_hour: parseInt(document.getElementById('price').value) || null,
+        });
+        Toast.success('Профиль психолога обновлён');
+      } catch(e) {
+        Toast.error(e.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Сохранить профиль';
+      }
+    });
+
+    // деактивация
+    document.getElementById('deactivate-btn').addEventListener('click', async () => {
+      if (!confirm('Вы уверены? Аккаунт будет деактивирован.')) return;
+      try {
+        await api.deleteMe();
+        Auth.logout();
+      } catch(e) {
+        Toast.error(e.message);
+      }
+    });
+  </script>
+</body>
+</html>

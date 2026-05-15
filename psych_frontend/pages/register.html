@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Регистрация — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+    .auth-wrap { width:100%; max-width:440px; animation:fadeUp .5s ease forwards; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    .auth-logo { font-family:var(--font-serif); font-size:28px; font-style:italic; text-align:center; margin-bottom:36px; }
+    .auth-logo span { color:var(--accent); }
+    .auth-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:36px; }
+    .auth-title { font-size:28px; margin-bottom:4px; }
+    .auth-sub { color:var(--text-muted); font-size:13px; margin-bottom:28px; }
+    .auth-form { display:flex; flex-direction:column; gap:18px; }
+    .role-toggle { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .role-btn {
+      padding:10px; border:1px solid var(--border); border-radius:var(--radius);
+      background:transparent; color:var(--text-muted); font-family:var(--font-mono);
+      font-size:13px; cursor:pointer; transition:all var(--transition); text-align:center;
+    }
+    .role-btn.active { border-color:var(--accent); color:var(--accent); background:rgba(168,197,160,.07); }
+    .btn-full { width:100%; justify-content:center; }
+    .auth-footer { text-align:center; margin-top:20px; font-size:13px; color:var(--text-muted); }
+    .auth-footer a { color:var(--accent); }
+    .error-msg { background:rgba(201,123,123,.08); border:1px solid var(--danger); color:var(--danger); border-radius:var(--radius); padding:10px 14px; font-size:13px; display:none; }
+    .error-msg.show { display:block; }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <div class="auth-wrap">
+    <div class="auth-logo"><span>психо</span>лог онлайн</div>
+    <div class="auth-card">
+      <h1 class="auth-title">Создать аккаунт</h1>
+      <p class="auth-sub">Присоединяйтесь — это бесплатно</p>
+      <div id="err" class="error-msg"></div>
+      <div class="auth-form">
+        <div class="field">
+          <label>Я регистрируюсь как</label>
+          <div class="role-toggle">
+            <button class="role-btn active" id="role-user" data-role="user">Пользователь</button>
+            <button class="role-btn" id="role-psych" data-role="psychologist">Психолог</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="name">Полное имя</label>
+          <input type="text" id="name" placeholder="Иван Иванов">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label for="password">Пароль</label>
+          <input type="password" id="password" placeholder="минимум 6 символов" autocomplete="new-password">
+        </div>
+        <button class="btn btn-primary btn-full" id="reg-btn">Зарегистрироваться</button>
+      </div>
+      <p class="auth-footer">Уже есть аккаунт? <a href="login.html">Войти</a></p>
+    </div>
+  </div>
+  <script>
+    if (Auth.isLoggedIn()) {
+      location.href = Auth.isPsychologist() ? 'psych-dashboard.html' : 'dashboard.html';
+    }
+
+    let selectedRole = 'user';
+    document.querySelectorAll('.role-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedRole = btn.dataset.role;
+      });
+    });
+
+    const regBtn = document.getElementById('reg-btn');
+    const err    = document.getElementById('err');
+
+    async function doRegister() {
+      err.classList.remove('show');
+      const full_name = document.getElementById('name').value.trim();
+      const email     = document.getElementById('email').value.trim();
+      const password  = document.getElementById('password').value;
+
+      if (!full_name || !email || !password) { err.textContent = 'Заполните все поля'; err.classList.add('show'); return; }
+      if (password.length < 6) { err.textContent = 'Пароль — минимум 6 символов'; err.classList.add('show'); return; }
+
+      regBtn.disabled = true; regBtn.textContent = 'Создаём аккаунт…';
+      try {
+        await api.register({ email, full_name, password, role: selectedRole });
+        // автоматически логиним
+        const { access_token } = await api.login({ email, password });
+        Auth.setToken(access_token);
+        const user = await api.getMe();
+        Auth.setUser(user);
+        location.href = user.role === 'psychologist' ? 'psych-dashboard.html' : 'dashboard.html';
+      } catch(e) {
+        err.textContent = e.message; err.classList.add('show');
+        regBtn.disabled = false; regBtn.textContent = 'Зарегистрироваться';
+      }
+    }
+
+    regBtn.addEventListener('click', doRegister);
+  </script>
+</body>
+</html>

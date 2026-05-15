@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Видеосессия — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #080909; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* header */
+    .room-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; height: 56px; flex-shrink: 0;
+      background: rgba(14,15,17,.9); border-bottom: 1px solid var(--border);
+    }
+    .room-brand { font-family: var(--font-serif); font-size: 18px; font-style: italic; }
+    .room-brand span { color: var(--accent); }
+    .room-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+    .status-dot.live { background: var(--danger); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* видео-сетка */
+    .video-area {
+      flex: 1; display: grid; gap: 4px; padding: 8px;
+      grid-template-columns: 1fr;
+      background: #0a0b0c;
+      min-height: 0;
+    }
+    .video-area.two-up { grid-template-columns: 1fr 1fr; }
+
+    .video-tile {
+      position: relative; border-radius: 12px; overflow: hidden;
+      background: #111316; display: flex; align-items: center; justify-content: center;
+    }
+    .video-tile video {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .tile-label {
+      position: absolute; bottom: 12px; left: 14px;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(6px);
+      color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 20px;
+    }
+    .tile-avatar {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: var(--accent-dim); display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-serif); font-size: 36px; color: var(--bg);
+    }
+
+    /* self-view pip */
+    .self-pip {
+      position: absolute; bottom: 80px; right: 16px;
+      width: 160px; height: 110px; border-radius: 10px; overflow: hidden;
+      border: 2px solid var(--border); background: #111316;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+      z-index: 10; display: none;
+    }
+    .self-pip video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+    /* controls */
+    .controls {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 14px 24px; flex-shrink: 0;
+      background: rgba(14,15,17,.95); border-top: 1px solid var(--border);
+    }
+    .ctrl-btn {
+      width: 52px; height: 52px; border-radius: 50%;
+      border: 1px solid var(--border); background: var(--bg-card);
+      color: var(--text); font-size: 20px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background var(--transition), border-color var(--transition), transform var(--transition);
+    }
+    .ctrl-btn:hover { background: var(--bg-hover); border-color: var(--border-hl); transform: scale(1.06); }
+    .ctrl-btn.off { background: rgba(201,123,123,.15); border-color: var(--danger); color: var(--danger); }
+    .ctrl-btn.end { background: var(--danger); border-color: var(--danger); color: #fff; width: 60px; height: 60px; font-size: 22px; }
+    .ctrl-btn.end:hover { background: #b56060; }
+
+    .ctrl-label { font-size: 10px; color: var(--text-dim); text-align: center; margin-top: 4px; }
+    .ctrl-group { display: flex; flex-direction: column; align-items: center; }
+
+    /* overlay ожидание */
+    .waiting-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      background: #0a0b0c; z-index: 20;
+    }
+    .waiting-overlay p { color: var(--text-muted); font-size: 14px; text-align: center; }
+    .connecting-dots span {
+      display: inline-block; width: 8px; height: 8px; background: var(--accent);
+      border-radius: 50%; margin: 0 3px; animation: bounce .8s infinite alternate;
+    }
+    .connecting-dots span:nth-child(2) { animation-delay: .2s; }
+    .connecting-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { from{transform:translateY(0)} to{transform:translateY(-8px)} }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+
+  <!-- шапка -->
+  <div class="room-header">
+    <div class="room-brand"><span>психо</span>лог онлайн</div>
+    <div class="room-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Подключение…</span>
+    </div>
+    <div id="timer" style="font-size:13px;color:var(--text-muted);font-family:var(--font-mono)">00:00</div>
+  </div>
+
+  <!-- видео -->
+  <div class="video-area" id="video-area">
+    <div class="video-tile" id="remote-tile">
+      <div class="tile-avatar" id="remote-avatar">?</div>
+      <div class="tile-label">Собеседник</div>
+    </div>
+    <div class="waiting-overlay" id="waiting-overlay">
+      <div class="connecting-dots"><span></span><span></span><span></span></div>
+      <p>Ожидаем подключения собеседника…<br>
+         <small style="color:var(--text-dim)">Убедитесь, что разрешили доступ к камере и микрофону</small></p>
+    </div>
+  </div>
+
+  <!-- мини-окно с собственным видео -->
+  <div class="self-pip" id="self-pip">
+    <video id="local-video" autoplay muted playsinline></video>
+  </div>
+
+  <!-- управление -->
+  <div class="controls">
+    <div class="ctrl-group">
+      <button class="ctrl-btn" id="btn-mic" title="Микрофон">🎙</button>
+      <div class="ctrl-label">Микрофон</div>
+    </div>
+    <div class="ctrl-group">
+      <button class="ctrl-btn" id="btn-cam" title="Камера">📹</button>
+      <div class="ctrl-label">Камера</div>
+    </div>
+    <div class="ctrl-group">
+      <button class="ctrl-btn end" id="btn-end" title="Завершить звонок">📵</button>
+      <div class="ctrl-label">Завершить</div>
+    </div>
+  </div>
+
+  <script>
+    requireAuth();
+
+    // ─── параметры ───
+    const params        = new URLSearchParams(location.search);
+    const appointmentId = params.get('appointment');
+    if (!appointmentId) { location.href = 'dashboard.html'; }
+
+    const WS_BASE = 'ws://localhost:8000/api/v1/sessions/ws';
+
+    // ─── состояние ───
+    let localStream   = null;
+    let peerConn      = null;
+    let socket        = null;
+    let micOn         = true;
+    let camOn         = true;
+    let timerInterval = null;
+    let seconds       = 0;
+    let roomId        = null;
+
+    // ─── UI-хелперы ───
+    const statusDot  = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const timerEl   = document.getElementById('timer');
+
+    function setStatus(state, label) {
+      statusDot.className  = 'status-dot' + (state === 'live' ? ' live' : '');
+      statusText.textContent = label;
+    }
+
+    function startTimer() {
+      timerInterval = setInterval(() => {
+        seconds++;
+        const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+        const s = String(seconds % 60).padStart(2, '0');
+        timerEl.textContent = `${m}:${s}`;
+      }, 1000);
+    }
+
+    // ─── получить инфо о сессии ───
+    async function init() {
+      let session;
+      try {
+        session = await api.getSession(appointmentId);
+      } catch(e) {
+        alert('Сессия не найдена или ещё не запущена психологом.');
+        history.back(); return;
+      }
+
+      roomId = session.room_id;
+      await startMedia();
+      connectSignaling();
+    }
+
+    // ─── медиа ───
+    async function startMedia() {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('local-video').srcObject = localStream;
+        document.getElementById('self-pip').style.display = 'block';
+      } catch(e) {
+        // нет камеры — продолжаем только с аудио или вообще без
+        console.warn('Нет доступа к камере/микрофону:', e.message);
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        } catch(_) { localStream = null; }
+      }
+    }
+
+    // ─── WebRTC ───
+    const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+    function createPeerConnection() {
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      }
+
+      pc.ontrack = e => {
+        const remoteVideo = document.getElementById('remote-tile').querySelector('video')
+          || (() => {
+            const v = document.createElement('video');
+            v.autoplay = true; v.playsInline = true;
+            v.style.cssText = 'width:100%;height:100%;object-fit:cover';
+            document.getElementById('remote-tile').appendChild(v);
+            document.getElementById('remote-avatar').style.display = 'none';
+            return v;
+          })();
+        remoteVideo.srcObject = e.streams[0];
+        document.getElementById('waiting-overlay').style.display = 'none';
+        setStatus('live', 'В эфире');
+        startTimer();
+      };
+
+      pc.onicecandidate = e => {
+        if (e.candidate && socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+          setStatus('', 'Соединение прервано');
+        }
+      };
+
+      return pc;
+    }
+
+    // ─── WebSocket сигналинг ───
+    function connectSignaling() {
+      socket = new WebSocket(`${WS_BASE}/${roomId}`);
+
+      socket.onopen = async () => {
+        setStatus('', 'Ожидаем собеседника…');
+        peerConn = createPeerConnection();
+        // первый участник создаёт offer
+        const offer = await peerConn.createOffer();
+        await peerConn.setLocalDescription(offer);
+        socket.send(JSON.stringify({ type: 'offer', sdp: offer.sdp }));
+      };
+
+      socket.onmessage = async ({ data }) => {
+        const msg = JSON.parse(data);
+
+        if (msg.type === 'offer') {
+          // второй участник получил offer — создаём answer
+          if (!peerConn) peerConn = createPeerConnection();
+          await peerConn.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
+          const answer = await peerConn.createAnswer();
+          await peerConn.setLocalDescription(answer);
+          socket.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+        }
+
+        if (msg.type === 'answer' && peerConn) {
+          await peerConn.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }));
+        }
+
+        if (msg.type === 'candidate' && peerConn) {
+          await peerConn.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        }
+      };
+
+      socket.onclose = () => { setStatus('', 'Отключено'); };
+      socket.onerror = () => { setStatus('', 'Ошибка соединения'); };
+    }
+
+    // ─── управление ───
+    document.getElementById('btn-mic').addEventListener('click', () => {
+      micOn = !micOn;
+      if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+      document.getElementById('btn-mic').classList.toggle('off', !micOn);
+      document.getElementById('btn-mic').textContent = micOn ? '🎙' : '🔇';
+    });
+
+    document.getElementById('btn-cam').addEventListener('click', () => {
+      camOn = !camOn;
+      if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = camOn);
+      document.getElementById('btn-cam').classList.toggle('off', !camOn);
+      document.getElementById('btn-cam').textContent = camOn ? '📹' : '📷';
+    });
+
+    document.getElementById('btn-end').addEventListener('click', () => {
+      if (!confirm('Завершить сессию?')) return;
+      cleanup();
+      history.back();
+    });
+
+    function cleanup() {
+      clearInterval(timerInterval);
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (peerConn)    peerConn.close();
+      if (socket)      socket.close();
+    }
+
+    window.addEventListener('beforeunload', cleanup);
+
+    // ─── старт ───
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Психологи — Психолог Онлайн</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <style>
+    .psych-card {
+      display: flex; flex-direction: column; gap: 12px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 24px;
+      transition: border-color var(--transition), transform var(--transition);
+      cursor: pointer;
+    }
+    .psych-card:hover { border-color: var(--accent-dim); transform: translateY(-2px); }
+    .psych-avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--accent-dim); display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-serif); font-size: 20px; color: var(--bg); flex-shrink: 0;
+    }
+    .psych-name { font-family: var(--font-serif); font-size: 22px; font-weight: 300; }
+    .psych-spec { font-size: 12px; color: var(--accent); letter-spacing: .04em; }
+    .psych-bio { font-size: 13px; color: var(--text-muted); line-height: 1.7; }
+    .psych-price { font-size: 13px; color: var(--text-muted); }
+    .psych-price strong { color: var(--text); }
+
+    /* modal слоты */
+    .slots-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-top: 16px; }
+    .slot-btn {
+      padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+      background: transparent; color: var(--text-muted); font-family: var(--font-mono);
+      font-size: 12px; cursor: pointer; transition: all var(--transition); text-align: left;
+    }
+    .slot-btn:hover { border-color: var(--accent-dim); color: var(--text); }
+    .slot-btn.selected { border-color: var(--accent); color: var(--accent); background: rgba(168,197,160,.08); }
+
+    .search-bar { margin-bottom: 28px; }
+    .search-bar input { max-width: 360px; }
+  </style>
+</head>
+<body>
+  <script src="../js/api.js"></script>
+  <script src="../js/navbar.js"></script>
+
+  <div class="page-wrap">
+    <h1 class="page-title">Психологи</h1>
+    <p class="page-subtitle">Выберите специалиста и запишитесь на консультацию</p>
+
+    <div class="search-bar field">
+      <input type="text" id="search" placeholder="Поиск по имени или специализации…">
+    </div>
+
+    <div id="list" class="grid-2">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- модалка записи -->
+  <div id="modal" class="modal-backdrop" style="display:none">
+    <div class="modal">
+      <h2 class="modal-title" id="modal-name">Выбрать время</h2>
+      <p style="font-size:13px;color:var(--text-muted)">Выберите свободный слот</p>
+
+      <div id="slots-grid" class="slots-grid">
+        <div class="loading-overlay"><div class="spinner"></div></div>
+      </div>
+
+      <div class="field mt-16">
+        <label for="notes">Комментарий (необязательно)</label>
+        <textarea id="notes" placeholder="Опишите запрос или причину обращения…"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn" id="modal-cancel">Отмена</button>
+        <button class="btn btn-primary" id="modal-book" disabled>Записаться</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    requireAuth();
+
+    let allPsychs = [];
+    let selectedSlotId = null;
+    let currentPsychId = null;
+
+    async function loadPsychs() {
+      allPsychs = await api.getPsychologists().catch(() => []);
+      renderList(allPsychs);
+    }
+
+    function renderList(psychs) {
+      const list = document.getElementById('list');
+      if (psychs.length === 0) {
+        list.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Ничего не найдено</p></div>`;
+        return;
+      }
+      list.innerHTML = psychs.map(p => {
+        const initial = p.user.full_name.charAt(0).toUpperCase();
+        return `
+          <div class="psych-card" onclick="openBooking(${p.id}, '${p.user.full_name}')">
+            <div class="row">
+              <div class="psych-avatar">${initial}</div>
+              <div>
+                <div class="psych-name">${p.user.full_name}</div>
+                ${p.specialization ? `<div class="psych-spec">${p.specialization}</div>` : ''}
+              </div>
+            </div>
+            ${p.bio ? `<p class="psych-bio">${p.bio}</p>` : ''}
+            ${p.price_per_hour
+              ? `<p class="psych-price">Стоимость: <strong>${p.price_per_hour} ₽/час</strong></p>`
+              : `<p class="psych-price" style="color:var(--text-dim)">Стоимость не указана</p>`}
+            <button class="btn btn-sm btn-primary" style="align-self:flex-start">Записаться</button>
+          </div>`;
+      }).join('');
+    }
+
+    // поиск
+    document.getElementById('search').addEventListener('input', e => {
+      const q = e.target.value.toLowerCase();
+      const filtered = allPsychs.filter(p =>
+        p.user.full_name.toLowerCase().includes(q) ||
+        (p.specialization || '').toLowerCase().includes(q)
+      );
+      renderList(filtered);
+    });
+
+    // открыть модалку
+    async function openBooking(psychId, name) {
+      currentPsychId = psychId;
+      selectedSlotId = null;
+      document.getElementById('modal-book').disabled = true;
+      document.getElementById('modal-name').textContent = name;
+      document.getElementById('notes').value = '';
+      document.getElementById('modal').style.display = 'flex';
+
+      const grid = document.getElementById('slots-grid');
+      grid.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+
+      const slots = await api.getSlotsFor(psychId).catch(() => []);
+      if (slots.length === 0) {
+        grid.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Нет свободных слотов</p>';
+        return;
+      }
+
+      grid.innerHTML = slots.map(s => `
+        <button class="slot-btn" onclick="selectSlot(${s.id}, this)">
+          ${formatDateShort(s.starts_at)}<br>
+          <span style="color:var(--text-dim);font-size:11px">— ${formatDateShort(s.ends_at)}</span>
+        </button>`).join('');
+    }
+
+    function selectSlot(id, el) {
+      document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+      el.classList.add('selected');
+      selectedSlotId = id;
+      document.getElementById('modal-book').disabled = false;
+    }
+
+    document.getElementById('modal-cancel').addEventListener('click', () => {
+      document.getElementById('modal').style.display = 'none';
+    });
+    document.getElementById('modal').addEventListener('click', e => {
+      if (e.target === document.getElementById('modal')) document.getElementById('modal').style.display = 'none';
+    });
+
+    document.getElementById('modal-book').addEventListener('click', async () => {
+      const btn = document.getElementById('modal-book');
+      btn.disabled = true; btn.textContent = 'Записываем…';
+      try {
+        const notes = document.getElementById('notes').value.trim() || null;
+        await api.bookAppointment({ slot_id: selectedSlotId, notes });
+        Toast.success('Вы успешно записались!');
+        document.getElementById('modal').style.display = 'none';
+      } catch(e) {
+        Toast.error(e.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Записаться';
+      }
+    });
+
+    loadPsychs();
+  </script>
+</body>
+</html>
