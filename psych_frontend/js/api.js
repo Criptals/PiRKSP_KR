@@ -2,7 +2,7 @@
    api.js  —  обёртка над fetch + авторизация
    ───────────────────────────────────────── */
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = '/api/v1';
 
 // ─── хранение токена ───
 const Auth = {

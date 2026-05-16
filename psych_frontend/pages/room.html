@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Видеосессия — Психолог Онлайн</title>
-  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="/css/base.css">
   <style>
     * { box-sizing: border-box; }
     body { background: #080909; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -97,7 +97,7 @@
   </style>
 </head>
 <body>
-  <script src="../js/api.js"></script>
+  <script src="/js/api.js"></script>
 
   <!-- шапка -->
   <div class="room-header">
@@ -143,37 +143,44 @@
     </div>
   </div>
 
-  <script>
+    <script>
     requireAuth();
 
-    // ─── параметры ───
-    const params        = new URLSearchParams(location.search);
+    // ─── Параметры ───
+    const params = new URLSearchParams(location.search);
     const appointmentId = params.get('appointment');
     if (!appointmentId) { location.href = 'dashboard.html'; }
 
+    // Проверьте порт! Если бэкенд на 8000, то WS обычно тоже там.
     const WS_BASE = 'ws://localhost:8000/api/v1/sessions/ws';
 
-    // ─── состояние ───
-    let localStream   = null;
-    let peerConn      = null;
-    let socket        = null;
-    let micOn         = true;
-    let camOn         = true;
+    // ─── Состояние ───
+    let localStream = null;
+    let peerConn = null;
+    let socket = null;
+    let micOn = true;
+    let camOn = true;
     let timerInterval = null;
-    let seconds       = 0;
-    let roomId        = null;
+    let seconds = 0;
+    let roomId = null;
+    let isInitiator = false; // Роль: true = создает Offer, false = ждет Offer
 
-    // ─── UI-хелперы ───
-    const statusDot  = document.getElementById('status-dot');
+    // ─── UI Элементы ───
+    const statusDot = document.getElementById('status-dot');
     const statusText = document.getElementById('status-text');
-    const timerEl   = document.getElementById('timer');
+    const timerEl = document.getElementById('timer');
+    const waitingOverlay = document.getElementById('waiting-overlay');
+    const remoteTile = document.getElementById('remote-tile');
+    const remoteAvatar = document.getElementById('remote-avatar');
 
     function setStatus(state, label) {
-      statusDot.className  = 'status-dot' + (state === 'live' ? ' live' : '');
+      statusDot.className = 'status-dot' + (state === 'live' ? ' live' : '');
       statusText.textContent = label;
     }
 
     function startTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      seconds = 0;
       timerInterval = setInterval(() => {
         seconds++;
         const m = String(Math.floor(seconds / 60)).padStart(2, '0');
@@ -182,146 +189,234 @@
       }, 1000);
     }
 
-    // ─── получить инфо о сессии ───
+    // ─── Инициализация ───
     async function init() {
       let session;
       try {
         session = await api.getSession(appointmentId);
       } catch(e) {
-        alert('Сессия не найдена или ещё не запущена психологом.');
+        alert('Сессия не найдена.');
         history.back(); return;
       }
-
       roomId = session.room_id;
+
+      // 1. Сначала получаем доступ к камере
       await startMedia();
+      // 2. Затем подключаемся к сигнальному серверу
       connectSignaling();
     }
 
-    // ─── медиа ───
+    // ─── Медиа (Камера/Микрофон) ───
     async function startMedia() {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById('local-video').srcObject = localStream;
+        // Запрашиваем и видео, и аудио
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true
+        });
+
+        // Показываем себя в PiP
+        const localVideo = document.getElementById('local-video');
+        localVideo.srcObject = localStream;
         document.getElementById('self-pip').style.display = 'block';
+        localVideo.play().catch(e => console.warn("Local play error:", e));
+
       } catch(e) {
-        // нет камеры — продолжаем только с аудио или вообще без
-        console.warn('Нет доступа к камере/микрофону:', e.message);
-        try {
-          localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        } catch(_) { localStream = null; }
+        console.error('Media Error:', e);
+        alert('Нет доступа к камере. Проверьте разрешения браузера.');
       }
     }
 
-    // ─── WebRTC ───
+    // ─── WebRTC Конфигурация ───
     const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 
     function createPeerConnection() {
+      if (peerConn) peerConn.close();
+
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
+      // Добавляем наши треки (видео+аудио) в соединение
       if (localStream) {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+          console.log(`Added local track: ${track.kind}`);
+        });
       }
 
-      pc.ontrack = e => {
-        const remoteVideo = document.getElementById('remote-tile').querySelector('video')
-          || (() => {
-            const v = document.createElement('video');
-            v.autoplay = true; v.playsInline = true;
-            v.style.cssText = 'width:100%;height:100%;object-fit:cover';
-            document.getElementById('remote-tile').appendChild(v);
-            document.getElementById('remote-avatar').style.display = 'none';
-            return v;
-          })();
-        remoteVideo.srcObject = e.streams[0];
-        document.getElementById('waiting-overlay').style.display = 'none';
+      // Когда приходит удаленный трек (видео или аудио собеседника)
+      pc.ontrack = (event) => {
+        console.log(`Received remote track: ${event.track.kind}`);
+
+        // Ищем или создаем видео-элемент для собеседника
+        let remoteVideo = remoteTile.querySelector('video');
+        if (!remoteVideo) {
+          remoteVideo = document.createElement('video');
+          remoteVideo.autoplay = true;
+          remoteVideo.playsInline = true;
+          remoteVideo.muted = false; // Важно: звук собеседника должен быть слышен
+          remoteVideo.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+          remoteTile.appendChild(remoteVideo);
+
+          // Скрываем аватар, когда пошло видео
+          if (remoteAvatar) remoteAvatar.style.display = 'none';
+          waitingOverlay.style.display = 'none';
+        }
+
+        // Привязываем поток
+        if (event.streams[0]) {
+          remoteVideo.srcObject = event.streams[0];
+          remoteVideo.play().catch(e => console.warn("Remote play error:", e));
+        }
+
         setStatus('live', 'В эфире');
         startTimer();
       };
 
-      pc.onicecandidate = e => {
-        if (e.candidate && socket && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
+      // Отправка ICE кандидатов через WebSocket
+      pc.onicecandidate = (event) => {
+        if (event.candidate && socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({
+            type: 'candidate',
+            candidate: event.candidate
+          }));
         }
       };
 
       pc.onconnectionstatechange = () => {
-        if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
-          setStatus('', 'Соединение прервано');
+        console.log('Connection State:', pc.connectionState);
+        if (pc.connectionState === 'connected') {
+          setStatus('live', 'Подключено');
+        } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+          setStatus('', 'Соединение разорвано');
         }
       };
 
       return pc;
     }
 
-    // ─── WebSocket сигналинг ───
+    // ─── Сигналинг (WebSocket) ───
     function connectSignaling() {
       socket = new WebSocket(`${WS_BASE}/${roomId}`);
 
-      socket.onopen = async () => {
-        setStatus('', 'Ожидаем собеседника…');
-        peerConn = createPeerConnection();
-        // первый участник создаёт offer
-        const offer = await peerConn.createOffer();
-        await peerConn.setLocalDescription(offer);
-        socket.send(JSON.stringify({ type: 'offer', sdp: offer.sdp }));
+      socket.onopen = () => {
+        console.log('WebSocket connected');
+        setStatus('', 'Поиск собеседника...');
+        // Отправляем сигнал "Я готов".
+        // Сервер перешлет это другому участнику.
+        // Кто первый получил "ready" от другого — тот становится Инициатором?
+        // Нет, проще: кто первый подключился к WS, тот и Initator.
+        // Но так как мы не знаем порядок, используем простую логику:
+        // Просто ждем сообщений. Если пришел 'offer' — мы Answerer.
+        // Если никто не присылает offer через 2 секунды — мы Initiator.
+
+        setTimeout(() => {
+          if (!peerConn && socket.readyState === WebSocket.OPEN) {
+            console.log('No offer received, becoming Initiator');
+            becomeInitiator();
+          }
+        }, 2000);
       };
 
       socket.onmessage = async ({ data }) => {
         const msg = JSON.parse(data);
+        console.log('Signal received:', msg.type);
 
         if (msg.type === 'offer') {
-          // второй участник получил offer — создаём answer
-          if (!peerConn) peerConn = createPeerConnection();
-          await peerConn.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: msg.sdp }));
-          const answer = await peerConn.createAnswer();
-          await peerConn.setLocalDescription(answer);
-          socket.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+          // Мы получили Offer -> мы Ответчик (Answerer)
+          await handleOffer(msg.sdp);
         }
-
-        if (msg.type === 'answer' && peerConn) {
-          await peerConn.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }));
+        else if (msg.type === 'answer') {
+          // Мы получили Answer -> мы Инициатор (Initiator)
+          if (peerConn) {
+            await peerConn.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }));
+            console.log('Remote Description set (Answer)');
+          }
         }
-
-        if (msg.type === 'candidate' && peerConn) {
-          await peerConn.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+        else if (msg.type === 'candidate') {
+          // Получили ICE кандидат
+          if (peerConn) {
+            try {
+              await peerConn.addIceCandidate(new RTCIceCandidate(msg.candidate));
+            } catch (e) {
+              console.error('Error adding candidate:', e);
+            }
+          }
         }
       };
 
-      socket.onclose = () => { setStatus('', 'Отключено'); };
-      socket.onerror = () => { setStatus('', 'Ошибка соединения'); };
+      socket.onclose = () => setStatus('', 'Отключено');
+      socket.onerror = (err) => console.error('WS Error:', err);
     }
 
-    // ─── управление ───
+    // Роль: Инициатор (создает Offer)
+    async function becomeInitiator() {
+      isInitiator = true;
+      peerConn = createPeerConnection();
+      try {
+        const offer = await peerConn.createOffer();
+        await peerConn.setLocalDescription(offer);
+        socket.send(JSON.stringify({ type: 'offer', sdp: offer.sdp }));
+        console.log('Sent Offer');
+      } catch (e) {
+        console.error('Error creating offer:', e);
+      }
+    }
+
+    // Роль: Ответчик (принимает Offer, шлет Answer)
+    async function handleOffer(sdp) {
+      // Если мы уже инициатор (конфликт), то игнорируем или перезапускаем
+      // В простой версии: если peerConn уже есть, значит мы уже начали процесс
+      if (peerConn && peerConn.signalingState !== 'stable') {
+        console.warn('Conflict: Already have a connection process');
+        return;
+      }
+
+      peerConn = createPeerConnection();
+      try {
+        await peerConn.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: sdp }));
+        const answer = await peerConn.createAnswer();
+        await peerConn.setLocalDescription(answer);
+        socket.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+        console.log('Sent Answer');
+      } catch (e) {
+        console.error('Error handling offer:', e);
+      }
+    }
+
+    // ─── Кнопки управления ───
     document.getElementById('btn-mic').addEventListener('click', () => {
       micOn = !micOn;
       if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = micOn);
-      document.getElementById('btn-mic').classList.toggle('off', !micOn);
-      document.getElementById('btn-mic').textContent = micOn ? '🎙' : '🔇';
+      const btn = document.getElementById('btn-mic');
+      btn.classList.toggle('off', !micOn);
+      btn.textContent = micOn ? '🎙' : '🔇';
     });
 
     document.getElementById('btn-cam').addEventListener('click', () => {
       camOn = !camOn;
       if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = camOn);
-      document.getElementById('btn-cam').classList.toggle('off', !camOn);
-      document.getElementById('btn-cam').textContent = camOn ? '📹' : '📷';
+      const btn = document.getElementById('btn-cam');
+      btn.classList.toggle('off', !camOn);
+      btn.textContent = camOn ? '📹' : '📷';
     });
 
     document.getElementById('btn-end').addEventListener('click', () => {
-      if (!confirm('Завершить сессию?')) return;
-      cleanup();
-      history.back();
+      if (confirm('Завершить сессию?')) {
+        cleanup();
+        history.back();
+      }
     });
 
     function cleanup() {
       clearInterval(timerInterval);
       if (localStream) localStream.getTracks().forEach(t => t.stop());
-      if (peerConn)    peerConn.close();
-      if (socket)      socket.close();
+      if (peerConn) peerConn.close();
+      if (socket) socket.close();
     }
 
     window.addEventListener('beforeunload', cleanup);
 
-    // ─── старт ───
+    // Запуск
     init();
   </script>
 </body>
