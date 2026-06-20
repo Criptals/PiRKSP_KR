@@ -2,6 +2,8 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.models.models import AppointmentStatus, UserRole
 
+PG_INT4_MAX = 2_147_483_647
+
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -95,7 +97,7 @@ class VideoSessionOut(BaseModel):
 
 
 class AppointmentCreate(BaseModel):
-    slot_id: int
+    slot_id: int = Field(gt=0, le=PG_INT4_MAX)
     notes: str | None = Field(default=None, max_length=1000)
 
 
