@@ -11,9 +11,14 @@ cp .env.example .env
 ```
 
 ## 2. Запуск сервисов
-Соберите образы и запустите контейнеры в фоновом режиме:
+Соберите образы и запустите контейнеры в режиме разработки:
 ```bash
-docker-compose up --build -d
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+Соберите образы и запустите контейнеры в режиме разработки:
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 ## 3. Доступ к приложениям
