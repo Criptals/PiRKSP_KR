@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./psych_backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./psych_backend/app:/app/app
+      - ./psych_backend/requirements.txt:/app/requirements.txt
+    command: >
+      uvicorn app.main:app 
+      --host 0.0.0.0 
+      --port 8000 
+      --reload
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      SHOW_DOCS: "true"

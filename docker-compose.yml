@@ -20,18 +20,17 @@ services:
 
   backend:
     build:
-      context: ./psych_backend
+      context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./psych_backend/.env
+      - .env
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./psych_backend/app:/app/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build:
